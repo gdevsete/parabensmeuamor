@@ -12,10 +12,13 @@ export async function GET(
       return NextResponse.json({ error: "ID da memória é obrigatório" }, { status: 400 })
     }
 
-    // Buscar a memória no banco de dados
-    const memory = await prisma.memory.findUnique({
+    // Buscar a memória no banco de dados (por ID ou shareUrl)
+    const memory = await prisma.memory.findFirst({
       where: {
-        id: memoryId,
+        OR: [
+          { id: memoryId },
+          { shareUrl: memoryId }
+        ]
       },
       select: {
         id: true,
