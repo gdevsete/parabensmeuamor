@@ -79,11 +79,6 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
       return () => URL.revokeObjectURL(url)
     }
   }, [audioFile, audioUrl])
-  
-  // Se não há áudio, não renderizar nada
-  if (!finalAudioUrl && !audioFile && !audioUrl) {
-    return null
-  }
 
   // Configurar áudio e eventos
   useEffect(() => {
@@ -231,6 +226,11 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
   }
 
   const progress = duration ? (currentTime / duration) * 100 : 0
+
+  // Se não há áudio, não renderizar nada
+  if (!finalAudioUrl && !audioFile && !audioUrl) {
+    return null
+  }
 
   return (
     <motion.div
