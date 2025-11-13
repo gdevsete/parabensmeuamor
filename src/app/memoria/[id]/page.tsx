@@ -29,8 +29,25 @@ export default function MemoriaPage() {
   const [showQRCode, setShowQRCode] = useState(false)
 
   useEffect(() => {
-    // Buscar memória no localStorage (apenas no cliente)
     if (typeof window !== 'undefined') {
+      // Primeiro, tentar buscar dados da URL
+      const urlParams = new URLSearchParams(window.location.search)
+      const encodedData = urlParams.get('data')
+      
+      if (encodedData) {
+        try {
+          // Decodificar dados da URL
+          const decodedData = decodeURIComponent(encodedData)
+          const memoryData: Memory = JSON.parse(decodedData)
+          setMemory(memoryData)
+          setLoading(false)
+          return
+        } catch (error) {
+          console.error('Erro ao decodificar dados da URL:', error)
+        }
+      }
+
+      // Se não encontrou na URL, buscar no localStorage
       try {
         const savedMemories = localStorage.getItem('memories')
         if (savedMemories) {

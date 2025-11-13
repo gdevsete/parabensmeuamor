@@ -46,6 +46,7 @@ export default function HomePage() {
   const [showResult, setShowResult] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [memoryUrl, setMemoryUrl] = useState('')
 
   // Função para converter File para base64
   const fileToBase64 = (file: File): Promise<string> => {
@@ -112,6 +113,43 @@ export default function HomePage() {
     } catch (error) {
       console.error('Erro ao salvar memória:', error)
       throw error
+    }
+  }
+
+  // Função para gerar URL com dados embutidos
+  const generateMemoryUrl = async (memory: Memory): Promise<string> => {
+    if (typeof window === 'undefined') return ''
+    
+    try {
+      // Converter arquivos para base64 para URL
+      const photosBase64 = await Promise.all(
+        memory.photos.map(photo => fileToBase64(photo))
+      )
+      
+      const videosBase64 = await Promise.all(
+        memory.videos.map(video => fileToBase64(video))
+      )
+      
+      const musicBase64 = memory.music ? await fileToBase64(memory.music) : undefined
+
+      const memoryData = {
+        id: memory.id,
+        title: memory.title,
+        message: memory.message,
+        photos: photosBase64,
+        videos: videosBase64,
+        music: musicBase64,
+        specialDate: memory.specialDate,
+        createdAt: new Date().toISOString()
+      }
+
+      // Codificar dados na URL
+      const encodedData = encodeURIComponent(JSON.stringify(memoryData))
+      return `${window.location.origin}/memoria/${memory.id}?data=${encodedData}`
+    } catch (error) {
+      console.error('Erro ao gerar URL com dados:', error)
+      // Fallback para URL simples
+      return `${window.location.origin}/memoria/${memory.id}`
     }
   }
 
@@ -823,7 +861,16 @@ export default function HomePage() {
                   </motion.button>
 
                   <motion.button
-                    onClick={() => setShowQRCode(true)}
+                    onClick={async () => {
+                      try {
+                        const url = await generateMemoryUrl(memory)
+                        setMemoryUrl(url)
+                        setShowQRCode(true)
+                      } catch (error) {
+                        console.error('Erro ao gerar QR Code:', error)
+                        alert('Erro ao gerar QR Code. Tente novamente!')
+                      }
+                    }}
                     className="w-full sm:w-auto flex items-center justify-center px-6 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-xl"
                     whileHover={{ scale: 1.03, y: -2 }}
                     whileTap={{ scale: 0.97 }}
@@ -833,17 +880,22 @@ export default function HomePage() {
                   </motion.button>
 
                   <motion.button
-                    onClick={() => {
-                      const memoryUrl = `${window.location.origin}/memoria/${memory.id}`
-                      if (navigator.share) {
-                        navigator.share({
-                          title: `💕 ${memory.title}`,
-                          text: 'Olha que memória linda que criei para você! 💖',
-                          url: memoryUrl,
-                        })
-                      } else {
-                        navigator.clipboard.writeText(memoryUrl)
-                        alert('💕 Link copiado! Agora você pode compartilhar sua página do amor! ✨')
+                    onClick={async () => {
+                      try {
+                        const memoryUrl = await generateMemoryUrl(memory)
+                        if (navigator.share) {
+                          navigator.share({
+                            title: `💕 ${memory.title}`,
+                            text: 'Olha que memória linda que criei para você! 💖',
+                            url: memoryUrl,
+                          })
+                        } else {
+                          navigator.clipboard.writeText(memoryUrl)
+                          alert('💕 Link copiado! Agora você pode compartilhar sua página do amor! ✨')
+                        }
+                      } catch (error) {
+                        console.error('Erro ao compartilhar:', error)
+                        alert('Erro ao gerar link. Tente novamente!')
                       }
                     }}
                     className="w-full sm:w-auto flex items-center justify-center px-6 py-4 bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 text-white rounded-2xl font-semibold hover:from-rose-600 hover:via-pink-600 hover:to-purple-700 transition-all duration-300 shadow-xl"
@@ -948,9 +1000,9 @@ export default function HomePage() {
       </AnimatePresence>
 
       {/* Modal QR Code */}
-      {showQRCode && memory.id && (
+      {showQRCode && memory.id && memoryUrl && (
         <QRCodeGenerator 
-          url={`${typeof window !== 'undefined' ? window.location.origin : ''}/memoria/${memory.id}`}
+          url={memoryUrl}
           memoryTitle={memory.title}
           onClose={() => setShowQRCode(false)}
         />
