@@ -30,51 +30,58 @@ export default function MemoriaPage() {
   const [showQRCode, setShowQRCode] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Primeiro, tentar buscar dados da URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const compressedData = urlParams.get('data')
-      
-      if (compressedData) {
+    const fetchMemory = async () => {
+      if (typeof window !== 'undefined') {
+        // Primeiro, tentar buscar dados da URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const compressedData = urlParams.get('data')
+        
+        if (compressedData) {
+          try {
+            // Descomprimir dados da URL
+            const decodedData = LZString.decompressFromEncodedURIComponent(compressedData)
+            if (decodedData) {
+              const memoryData: Memory = JSON.parse(decodedData)
+              setMemory(memoryData)
+              setLoading(false)
+              return
+            }
+          } catch (error) {
+            console.error('Erro ao descomprimir dados da URL:', error)
+          }
+        }
+
+        // Se não encontrou na URL, buscar no banco de dados
         try {
-          // Descomprimir dados da URL
-          const decodedData = LZString.decompressFromEncodedURIComponent(compressedData)
-          if (decodedData) {
-            const memoryData: Memory = JSON.parse(decodedData)
+          const response = await fetch(`/api/memories/${memoryId}`)
+          if (response.ok) {
+            const memoryData = await response.json()
             setMemory(memoryData)
             setLoading(false)
             return
           }
         } catch (error) {
-          console.error('Erro ao descomprimir dados da URL:', error)
-          // Tentar método antigo como fallback
-          try {
-            const decodedData = decodeURIComponent(compressedData)
-            const memoryData: Memory = JSON.parse(decodedData)
-            setMemory(memoryData)
-            setLoading(false)
-            return
-          } catch (legacyError) {
-            console.error('Erro no fallback de decodificação:', legacyError)
-          }
+          console.error('Erro ao buscar memória na API:', error)
         }
-      }
 
-      // Se não encontrou na URL, buscar no localStorage
-      try {
-        const savedMemories = localStorage.getItem('memories')
-        if (savedMemories) {
-          const memories: Memory[] = JSON.parse(savedMemories)
-          const foundMemory = memories.find(m => m.id === memoryId)
-          if (foundMemory) {
-            setMemory(foundMemory)
+        // Fallback: buscar no localStorage
+        try {
+          const savedMemories = localStorage.getItem('memories')
+          if (savedMemories) {
+            const memories: Memory[] = JSON.parse(savedMemories)
+            const foundMemory = memories.find(m => m.id === memoryId)
+            if (foundMemory) {
+              setMemory(foundMemory)
+            }
           }
+        } catch (error) {
+          console.error('Erro ao acessar localStorage:', error)
         }
-      } catch (error) {
-        console.error('Erro ao acessar localStorage:', error)
       }
+      setLoading(false)
     }
-    setLoading(false)
+
+    fetchMemory()
   }, [memoryId])
 
   if (loading) {
