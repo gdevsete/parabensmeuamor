@@ -5,9 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 interface PhotoGalleryProps {
-  photos: File[]
+  photos: (File | string)[]
   className?: string
   autoPlay?: boolean
+  onPhotosChange?: (photos: string[]) => void
+  onFileUpload?: (files: File[]) => void
+  isLoading?: boolean
+  maxFiles?: number
   interval?: number
 }
 
@@ -50,7 +54,7 @@ export default function PhotoGallery({ photos, className = '', autoPlay = false,
           <AnimatePresence mode="wait">
             <motion.img
               key={currentIndex}
-              src={URL.createObjectURL(photos[currentIndex])}
+              src={typeof photos[currentIndex] === 'string' ? photos[currentIndex] : URL.createObjectURL(photos[currentIndex])}
               alt={`Foto ${currentIndex + 1}`}
               className="w-full h-64 sm:h-80 md:h-96 object-contain cursor-pointer bg-gradient-to-br from-rose-50 to-pink-50"
               onClick={() => setIsFullscreen(true)}
@@ -137,7 +141,7 @@ export default function PhotoGallery({ photos, className = '', autoPlay = false,
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.8 }}
-              src={URL.createObjectURL(photos[currentIndex])}
+              src={typeof photos[currentIndex] === 'string' ? photos[currentIndex] : URL.createObjectURL(photos[currentIndex])}
               alt={`Foto ${currentIndex + 1}`}
               className="max-w-[95vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}

@@ -1,1066 +1,268 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Heart, Music, Camera, Clock, Sparkles, Upload, Play, Pause, ArrowLeft, Share, QrCode } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import confetti from 'canvas-confetti'
-import LZString from 'lz-string'
-import MediaGallery from '@/components/MediaGallery'
-import MusicPlayer from '@/components/MusicPlayer'
-import Countdown from '@/components/Countdown'
-import QRCodeGenerator from '@/components/QRCodeGenerator'
-
-interface Memory {
-  id: string
-  title: string
-  message: string
-  photos: File[]
-  videos: File[]
-  music?: File
-  countdownDate?: Date
-  specialDate: string
-}
-
-interface SavedMemory {
-  id: string
-  title: string
-  message: string
-  photos: string[] // URLs das imagens convertidas para base64
-  videos: string[] // URLs dos vídeos convertidos para base64
-  music?: string // URL da música convertida para base64
-  specialDate: string
-  createdAt: string
-}
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import { motion } from 'framer-motion'
+import { Heart, LogIn, UserPlus, Sparkles, Camera, Music, Calendar, Shield, Share2, Zap } from 'lucide-react'
+import Link from 'next/link'
 
 export default function HomePage() {
-  const [currentStep, setCurrentStep] = useState(1)
-  const [memory, setMemory] = useState<Memory>({
-    id: '',
-    title: '',
-    message: '',
-    photos: [],
-    videos: [],
-    specialDate: ''
-  })
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [showEmojiRain, setShowEmojiRain] = useState(false)
-  const [showResult, setShowResult] = useState(false)
-  const [showQRCode, setShowQRCode] = useState(false)
-  const [isCreating, setIsCreating] = useState(false)
-  const [memoryUrl, setMemoryUrl] = useState('')
+  const { data: session, status } = useSession()
+  const router = useRouter()
 
-  // Função para converter File para base64 com compressão
-  const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      if (file.type.startsWith('image/')) {
-        // Otimizar imagens
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        const img = new Image()
-        
-        img.onload = () => {
-          const ratio = Math.min(maxWidth / img.width, maxWidth / img.height)
-          canvas.width = img.width * ratio
-          canvas.height = img.height * ratio
-          
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
-          resolve(canvas.toDataURL('image/jpeg', quality))
-        }
-        
-        img.onerror = reject
-        img.src = URL.createObjectURL(file)
-      } else {
-        // Para vídeos e áudio, usar reader normal
-        const reader = new FileReader()
-        reader.readAsDataURL(file)
-        reader.onload = () => resolve(reader.result as string)
-        reader.onerror = error => reject(error)
-      }
-    })
-  }
-
-  // Função para salvar memória permanentemente
-  const saveMemoryPermanently = async (memory: Memory): Promise<string> => {
-    try {
-      // Verificar se está no navegador
-      if (typeof window === 'undefined') {
-        console.log('Salvamento adiado - não está no navegador')
-        return memory.id
-      }
-
-      // Converter todos os arquivos para base64
-      const photosBase64 = await Promise.all(
-        memory.photos.map(photo => fileToBase64(photo))
-      )
-      
-      const videosBase64 = await Promise.all(
-        memory.videos.map(video => fileToBase64(video))
-      )
-      
-      const musicBase64 = memory.music ? await fileToBase64(memory.music) : undefined
-
-      const savedMemory: SavedMemory = {
-        id: memory.id,
-        title: memory.title,
-        message: memory.message,
-        photos: photosBase64,
-        videos: videosBase64,
-        music: musicBase64,
-        specialDate: memory.specialDate,
-        createdAt: new Date().toISOString()
-      }
-
-      // Salvar no localStorage (apenas no cliente)
-      try {
-        const existingMemories = localStorage.getItem('memories')
-        const memories: SavedMemory[] = existingMemories ? JSON.parse(existingMemories) : []
-        
-        // Verificar se já existe uma memória com este ID
-        const existingIndex = memories.findIndex(m => m.id === memory.id)
-        if (existingIndex >= 0) {
-          memories[existingIndex] = savedMemory
-        } else {
-          memories.push(savedMemory)
-        }
-        
-        localStorage.setItem('memories', JSON.stringify(memories))
-        console.log('Memória salva com sucesso:', memory.id)
-      } catch (storageError) {
-        console.warn('Erro ao acessar localStorage:', storageError)
-        // Continuar mesmo se localStorage falhar
-      }
-      
-      return memory.id
-    } catch (error) {
-      console.error('Erro ao salvar memória:', error)
-      throw error
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.push('/dashboard')
     }
-  }
+  }, [status, router])
 
-  // Função para gerar URL com dados embutidos e comprimidos
-  const generateMemoryUrl = async (memory: Memory): Promise<string> => {
-    if (typeof window === 'undefined') return ''
-    
-    try {
-      // Limitar quantidade de fotos/vídeos para URL
-      const maxPhotos = Math.min(memory.photos.length, 3)
-      const maxVideos = Math.min(memory.videos.length, 1)
-      
-      // Converter arquivos para base64 otimizado
-      const photosBase64 = await Promise.all(
-        memory.photos.slice(0, maxPhotos).map(photo => fileToBase64(photo, 600, 0.6))
-      )
-      
-      // Para vídeos, apenas converter se pequenos
-      const videosBase64: string[] = []
-      for (let i = 0; i < maxVideos; i++) {
-        const video = memory.videos[i]
-        if (video && video.size < 5 * 1024 * 1024) { // Apenas vídeos < 5MB
-          videosBase64.push(await fileToBase64(video))
-        }
-      }
-      
-      // Para música, apenas se pequena
-      let musicBase64: string | undefined
-      if (memory.music && memory.music.size < 3 * 1024 * 1024) { // Apenas música < 3MB
-        musicBase64 = await fileToBase64(memory.music)
-      }
-
-      const memoryData = {
-        id: memory.id,
-        title: memory.title,
-        message: memory.message,
-        photos: photosBase64,
-        videos: videosBase64,
-        music: musicBase64,
-        specialDate: memory.specialDate,
-        createdAt: new Date().toISOString()
-      }
-
-      // Comprimir e codificar dados na URL
-      const jsonString = JSON.stringify(memoryData)
-      const compressed = LZString.compressToEncodedURIComponent(jsonString)
-      
-      // Verificar se URL não ficou muito grande (limite de ~8KB para ser seguro)
-      if (compressed.length > 8000) {
-        console.warn('URL muito grande, usando versão reduzida')
-        // Versão reduzida sem mídia
-        const reducedData = {
-          id: memory.id,
-          title: memory.title,
-          message: memory.message,
-          photos: [],
-          videos: [],
-          music: undefined,
-          specialDate: memory.specialDate,
-          createdAt: new Date().toISOString()
-        }
-        const reducedCompressed = LZString.compressToEncodedURIComponent(JSON.stringify(reducedData))
-        return `${window.location.origin}/memoria/${memory.id}?data=${reducedCompressed}`
-      }
-      
-      return `${window.location.origin}/memoria/${memory.id}?data=${compressed}`
-    } catch (error) {
-      console.error('Erro ao gerar URL com dados:', error)
-      // Fallback para URL simples
-      return `${window.location.origin}/memoria/${memory.id}`
-    }
-  }
-
-  const triggerConfetti = () => {
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#ff69b4', '#ff1493', '#ffc0cb', '#ff6347', '#ff4500']
-    })
-  }
-
-  const triggerEmojiRain = () => {
-    setShowEmojiRain(true)
-    setTimeout(() => setShowEmojiRain(false), 5000)
-  }
-
-  const handleMediaUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
-    if (files.length > 0) {
-      const photos: File[] = []
-      const videos: File[] = []
-      
-      files.forEach(file => {
-        if (file.type.startsWith('image/')) {
-          photos.push(file)
-        } else if (file.type.startsWith('video/')) {
-          videos.push(file)
-        }
-      })
-      
-      setMemory(prev => ({
-        ...prev,
-        photos: [...prev.photos, ...photos].slice(0, 7),
-        videos: [...prev.videos, ...videos].slice(0, 3)
-      }))
-      triggerConfetti()
-    }
-  }
-
-  const handleMusicUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setMemory(prev => ({ ...prev, music: file }))
-    }
-  }
-
-  const nextStep = () => {
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1)
-      triggerConfetti()
-    }
-  }
-
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
-    }
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Carregando...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-100 relative overflow-hidden">
-      {/* Emoji Rain Effect */}
-      {showEmojiRain && (
-        <div className="fixed inset-0 pointer-events-none z-10">
-          {Array.from({ length: 20 }).map((_, i) => (
-            <div
-              key={i}
-              className="emoji-rain absolute text-2xl"
-              style={{
-                left: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 2}s`,
-                animationDuration: `${3 + Math.random() * 2}s`
-              }}
-            >
-              {['💕', '💖', '💝', '💗', '💓', '❤️', '🌹', '✨'][Math.floor(Math.random() * 8)]}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Background Hearts */}
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-50">
+      {/* Decorações de fundo */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute text-pink-200 text-2xl"
-            initial={{ y: "100vh", x: Math.random() * 1200 }}
-            animate={{ 
-              y: "-100px", 
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1200),
-              rotate: 360 
-            }}
-            transition={{
-              duration: 10 + Math.random() * 5,
-              repeat: Infinity,
-              delay: Math.random() * 5
-            }}
-          >
-            💕
-          </motion.div>
-        ))}
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
+        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-1/4 left-1/3 w-64 h-64 bg-indigo-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
       </div>
 
-      <div className="container mx-auto px-4 py-8 relative z-10">
-        {/* Header */}
-        <motion.div 
-          className="text-center mb-12"
-          initial={{ opacity: 0, y: -50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-        >
-          <div className="flex items-center justify-center mb-4">
-            <Heart className="text-pink-500 mr-2 animate-pulse-heart" size={40} />
-            <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-              Memória do Amor
-            </h1>
-            <Heart className="text-pink-500 ml-2 animate-pulse-heart" size={40} />
-          </div>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Crie uma página digital única e emocionante para eternizar seus momentos especiais
-          </p>
-        </motion.div>
-
-        {/* Progress Steps */}
-        <div className="flex justify-center mb-12">
-          <div className="flex items-center space-x-4">
-            {[1, 2, 3, 4].map((step) => (
-              <div key={step} className="flex items-center">
-                <motion.div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold transition-all duration-300 ${
-                    currentStep >= step 
-                      ? 'bg-gradient-to-r from-pink-500 to-purple-600 shadow-lg' 
-                      : 'bg-gray-300'
-                  }`}
-                  whileHover={{ scale: 1.1 }}
+      {/* Header */}
+      <header className="relative z-10 bg-white/90 backdrop-blur-md border-b border-pink-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <Heart className="w-8 h-8 text-pink-500 mr-3" fill="currentColor" />
+              <h1 className="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+                Memórias do Amor
+              </h1>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <Link href="/login">
+                <motion.button
+                  className="flex items-center px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  {step}
-                </motion.div>
-                {step < 4 && (
-                  <div className={`w-8 h-1 mx-2 transition-all duration-300 ${
-                    currentStep > step ? 'bg-pink-500' : 'bg-gray-300'
-                  }`} />
-                )}
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Entrar
+                </motion.button>
+              </Link>
+              
+              <Link href="/register">
+                <motion.button
+                  className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-2 rounded-full font-medium hover:from-pink-600 hover:to-purple-700 transition-all"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <UserPlus className="w-4 h-4 mr-2 inline" />
+                  Criar Conta
+                </motion.button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <main className="relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+          <div className="text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+            >
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full mb-8">
+                <Heart className="w-10 h-10 text-white" fill="currentColor" />
               </div>
-            ))}
+              
+              <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
+                Eternize Seus
+                <span className="bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block">
+                  Momentos Especiais
+                </span>
+              </h1>
+              
+              <p className="text-xl text-gray-600 mb-12 max-w-3xl mx-auto">
+                Crie páginas digitais únicas e românticas para sua pessoa especial. 
+                Com fotos, música, vídeos e animações emocionantes que durarão para sempre.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+                <Link href="/register">
+                  <motion.button
+                    className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg"
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Sparkles className="w-5 h-5 mr-2 inline" />
+                    Começar Agora - Grátis
+                  </motion.button>
+                </Link>
+                
+                <Link href="/login">
+                  <motion.button
+                    className="bg-white/80 backdrop-blur-md text-gray-700 px-8 py-4 rounded-2xl font-semibold text-lg hover:bg-white transition-all border border-gray-200"
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    Já tenho conta
+                  </motion.button>
+                </Link>
+              </div>
+            </motion.div>
+
+            {/* Features Preview */}
+            <motion.div
+              className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+            >
+              <div className="bg-white/90 backdrop-blur-md rounded-2xl p-8 shadow-xl border border-pink-200">
+                <div className="bg-pink-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Camera className="w-8 h-8 text-pink-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Galeria de Momentos</h3>
+                <p className="text-gray-600">
+                  Adicione até 7 fotos e vídeos dos momentos mais especiais que vocês viveram juntos.
+                </p>
+              </div>
+
+              <div className="bg-white/90 backdrop-blur-md rounded-2xl p-8 shadow-xl border border-purple-200">
+                <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Music className="w-8 h-8 text-purple-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Trilha Sonora</h3>
+                <p className="text-gray-600">
+                  Adicione a música que representa o amor de vocês para tocar automaticamente.
+                </p>
+              </div>
+
+              <div className="bg-white/90 backdrop-blur-md rounded-2xl p-8 shadow-xl border border-indigo-200">
+                <div className="bg-indigo-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Calendar className="w-8 h-8 text-indigo-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Datas Especiais</h3>
+                <p className="text-gray-600">
+                  Conte quantos dias estão juntos e crie contadores para eventos importantes.
+                </p>
+              </div>
+            </motion.div>
+
+            {/* Benefits */}
+            <motion.div
+              className="bg-white/90 backdrop-blur-md rounded-3xl p-12 shadow-2xl border border-pink-200"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.4 }}
+            >
+              <h2 className="text-3xl font-bold text-gray-900 mb-12">
+                Por que escolher Memórias do Amor?
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="text-center">
+                  <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Shield className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">100% Seguro</h3>
+                  <p className="text-gray-600">
+                    Suas memórias são salvas com segurança e só você tem acesso.
+                  </p>
+                </div>
+
+                <div className="text-center">
+                  <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Share2 className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Fácil Compartilhar</h3>
+                  <p className="text-gray-600">
+                    Compartilhe com um link único ou QR code gerado automaticamente.
+                  </p>
+                </div>
+
+                <div className="text-center">
+                  <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Zap className="w-8 h-8 text-yellow-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Super Rápido</h3>
+                  <p className="text-gray-600">
+                    Crie sua memória em poucos minutos com nossa interface intuitiva.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
 
-        {/* Step Content */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            transition={{ duration: 0.5 }}
-            className="max-w-2xl mx-auto"
-          >
-            {/* Step 1: Basic Info */}
-            {currentStep === 1 && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-pink-200">
-                <div className="text-center mb-8">
-                  <Sparkles className="text-pink-500 mx-auto mb-4 animate-bounce-gentle" size={48} />
-                  <h2 className="text-3xl font-bold text-gray-800 mb-2">Informações Básicas</h2>
-                  <p className="text-gray-600">Vamos começar com o título e mensagem especial</p>
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Título da Memória
-                    </label>
-                    <input
-                      type="text"
-                      value={memory.title}
-                      onChange={(e) => setMemory(prev => ({ ...prev, title: e.target.value }))}
-                      placeholder="Ex: Nosso Primeiro Encontro ❤️"
-                      className="w-full px-4 py-3 border-2 border-pink-200 rounded-xl focus:outline-none focus:border-pink-500 transition-colors text-gray-800 bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Mensagem Especial
-                    </label>
-                    <textarea
-                      value={memory.message}
-                      onChange={(e) => setMemory(prev => ({ ...prev, message: e.target.value }))}
-                      placeholder="Escreva uma mensagem carinhosa que toque o coração..."
-                      rows={4}
-                      className="w-full px-4 py-3 border-2 border-pink-200 rounded-xl focus:outline-none focus:border-pink-500 transition-colors resize-none text-gray-800 bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Data Especial
-                    </label>
-                    <input
-                      type="date"
-                      value={memory.specialDate}
-                      onChange={(e) => setMemory(prev => ({ ...prev, specialDate: e.target.value }))}
-                      className="w-full px-4 py-3 border-2 border-pink-200 rounded-xl focus:outline-none focus:border-pink-500 transition-colors text-gray-800 bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Photos */}
-            {currentStep === 2 && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-pink-200">
-                <div className="text-center mb-8">
-                  <Camera className="text-pink-500 mx-auto mb-4 animate-bounce-gentle" size={48} />
-                  <h2 className="text-3xl font-bold text-gray-800 mb-2">Adicione Fotos e Vídeos</h2>
-                  <p className="text-gray-600">Até 7 fotos e 3 vídeos para contar sua história (opcional)</p>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="border-2 border-dashed border-pink-300 rounded-xl p-8 text-center hover:border-pink-500 transition-colors">
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,video/*"
-                      onChange={handleMediaUpload}
-                      className="hidden"
-                      id="media-upload"
-                    />
-                    <label htmlFor="media-upload" className="cursor-pointer">
-                      <Upload className="text-pink-400 mx-auto mb-4" size={48} />
-                      <p className="text-gray-600">Clique para adicionar fotos e vídeos</p>
-                      <div className="flex justify-center gap-4 text-sm text-gray-400 mt-2">
-                        <span>{memory.photos.length}/7 fotos</span>
-                        <span>{memory.videos.length}/3 vídeos</span>
-                      </div>
-                    </label>
-                  </div>
-
-                  {(memory.photos.length > 0 || memory.videos.length > 0) && (
-                    <div className="space-y-4">
-                      {memory.photos.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-700 mb-2">📸 Fotos</h3>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {memory.photos.map((photo, index) => (
-                              <motion.div
-                                key={index}
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="relative"
-                              >
-                                <img
-                                  src={URL.createObjectURL(photo)}
-                                  alt={`Foto ${index + 1}`}
-                                  className="w-full h-24 object-cover rounded-lg shadow-md"
-                                />
-                                <button
-                                  onClick={() => setMemory(prev => ({
-                                    ...prev,
-                                    photos: prev.photos.filter((_, i) => i !== index)
-                                  }))}
-                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
-                                >
-                                  ×
-                                </button>
-                              </motion.div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {memory.videos.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-700 mb-2">🎥 Vídeos</h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {memory.videos.map((video, index) => (
-                              <motion.div
-                                key={index}
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="relative"
-                              >
-                                <video
-                                  src={URL.createObjectURL(video)}
-                                  className="w-full h-32 object-cover rounded-lg shadow-md"
-                                  controls
-                                />
-                                <button
-                                  onClick={() => setMemory(prev => ({
-                                    ...prev,
-                                    videos: prev.videos.filter((_, i) => i !== index)
-                                  }))}
-                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
-                                >
-                                  ×
-                                </button>
-                              </motion.div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Music */}
-            {currentStep === 3 && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-pink-200">
-                <div className="text-center mb-8">
-                  <Music className="text-pink-500 mx-auto mb-4 animate-bounce-gentle" size={48} />
-                  <h2 className="text-3xl font-bold text-gray-800 mb-2">Música de Fundo</h2>
-                  <p className="text-gray-600">Aquela música que traz lembranças especiais (opcional)</p>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="border-2 border-dashed border-pink-300 rounded-xl p-8 text-center hover:border-pink-500 transition-colors">
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      onChange={handleMusicUpload}
-                      className="hidden"
-                      id="music-upload"
-                    />
-                    <label htmlFor="music-upload" className="cursor-pointer">
-                      <Music className="text-pink-400 mx-auto mb-4" size={48} />
-                      <p className="text-gray-600">
-                        {memory.music ? `Música: ${memory.music.name}` : 'Clique para adicionar música'}
-                      </p>
-                    </label>
-                  </div>
-
-                  {memory.music && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="bg-pink-50 rounded-xl p-4 flex items-center justify-between"
-                    >
-                      <div className="flex items-center">
-                        <Music className="text-pink-500 mr-3" size={24} />
-                        <div>
-                          <p className="font-medium text-gray-800">{memory.music.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {(memory.music.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setIsPlaying(!isPlaying)}
-                        className="bg-pink-500 text-white p-2 rounded-full hover:bg-pink-600 transition-colors"
-                      >
-                        {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                      </button>
-                    </motion.div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Preview & Create */}
-            {currentStep === 4 && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-pink-200">
-                <div className="text-center mb-8">
-                  <Heart className="text-pink-500 mx-auto mb-4 animate-pulse-heart" size={48} />
-                  <h2 className="text-3xl font-bold text-gray-800 mb-2">Sua Memória Está Pronta!</h2>
-                  <p className="text-gray-600">Visualize e finalize sua página do amor</p>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="bg-gradient-to-r from-pink-100 to-purple-100 rounded-xl p-6">
-                    <h3 className="text-xl font-bold text-gray-800 mb-4">Resumo da Memória</h3>
-                    <div className="space-y-3">
-                      <p><span className="font-medium">Título:</span> {memory.title || 'Não informado'}</p>
-                      <p><span className="font-medium">Mensagem:</span> {memory.message || 'Não informada'}</p>
-                      <p><span className="font-medium">Data Especial:</span> {memory.specialDate || 'Não informada'}</p>
-                      <p><span className="font-medium">Fotos:</span> {memory.photos.length} adicionadas</p>
-                      <p><span className="font-medium">Música:</span> {memory.music ? 'Adicionada' : 'Não adicionada'}</p>
-                    </div>
-                  </div>
-
-                  <motion.button
-                    onClick={async () => {
-                      if (isCreating) return
-                      
-                      try {
-                        setIsCreating(true)
-                        
-                        // Validação básica
-                        if (!memory.title.trim()) {
-                          alert('Por favor, digite um título para sua memória! 💕')
-                          return
-                        }
-                        if (!memory.message.trim()) {
-                          alert('Por favor, escreva uma mensagem carinhosa! 💖')
-                          return
-                        }
-
-                        triggerConfetti()
-                        triggerEmojiRain()
-                        
-                        // Gerar ID único para a memória
-                        const memoryId = `memory_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-                        const updatedMemory = { ...memory, id: memoryId }
-                        setMemory(updatedMemory)
-                        
-                        // Tentar salvar memória permanentemente
-                        try {
-                          await saveMemoryPermanently(updatedMemory)
-                          console.log('Memória salva com ID:', memoryId)
-                        } catch (saveError) {
-                          console.warn('Erro ao salvar no localStorage, mas continuando:', saveError)
-                          // Continuar mesmo se o salvamento falhar
-                        }
-                        
-                        setShowResult(true)
-                        
-                        // Simular interação para permitir autoplay de áudio
-                        setTimeout(() => {
-                          if (typeof window !== 'undefined') {
-                            document.dispatchEvent(new Event('click', { bubbles: true }))
-                            document.dispatchEvent(new Event('touchstart', { bubbles: true }))
-                          }
-                        }, 100)
-                      } catch (error) {
-                        console.error('Erro geral ao criar memória:', error)
-                        alert('Oops! Algo deu errado. Tente novamente! 💕')
-                      } finally {
-                        setIsCreating(false)
-                      }
-                    }}
-                    className={`w-full text-white py-4 rounded-xl font-bold text-lg transition-all duration-300 shadow-lg ${
-                      isCreating 
-                        ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700'
-                    }`}
-                    whileHover={!isCreating ? { scale: 1.02 } : {}}
-                    whileTap={!isCreating ? { scale: 0.98 } : {}}
-                    disabled={isCreating}
-                  >
-                    {isCreating ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
-                        💕 Criando Memória...
-                      </span>
-                    ) : (
-                      '🚀 Criar Página do Amor'
-                    )}
-                  </motion.button>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Navigation Buttons */}
-        <div className="flex justify-between mt-8 max-w-2xl mx-auto">
-          <motion.button
-            onClick={prevStep}
-            disabled={currentStep === 1}
-            className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-              currentStep === 1
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-white text-pink-600 border-2 border-pink-500 hover:bg-pink-50'
-            }`}
-            whileHover={currentStep > 1 ? { scale: 1.05 } : {}}
-            whileTap={currentStep > 1 ? { scale: 0.95 } : {}}
-          >
-            ← Anterior
-          </motion.button>
-
-          <motion.button
-            onClick={nextStep}
-            disabled={currentStep === 4}
-            className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-              currentStep === 4
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700'
-            }`}
-            whileHover={currentStep < 4 ? { scale: 1.05 } : {}}
-            whileTap={currentStep < 4 ? { scale: 0.95 } : {}}
-          >
-            {currentStep === 4 ? 'Finalizado ✓' : 'Próximo →'}
-          </motion.button>
+        {/* CTA Final */}
+        <div className="bg-gradient-to-r from-pink-500 to-purple-600 py-16">
+          <div className="max-w-4xl mx-auto text-center px-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+            >
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+                Pronto para criar sua primeira memória?
+              </h2>
+              <p className="text-xl text-pink-100 mb-8">
+                Milhares de casais já eternizaram seus momentos especiais. Seja o próximo!
+              </p>
+              
+              <Link href="/register">
+                <motion.button
+                  className="bg-white text-pink-600 px-10 py-4 rounded-2xl font-bold text-lg hover:bg-pink-50 transition-all shadow-xl"
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Heart className="w-5 h-5 mr-2 inline" fill="currentColor" />
+                  Criar Minha Memória
+                </motion.button>
+              </Link>
+            </motion.div>
+          </div>
         </div>
-      </div>
+      </main>
 
-      {/* Página de Resultado da Memória */}
-      <AnimatePresence>
-        {showResult && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gradient-to-br from-rose-100 via-pink-100 to-purple-200 z-50 overflow-y-auto"
-            style={{
-              background: 'linear-gradient(135deg, #fdf2f8 0%, #fce7f3 25%, #fbcfe8 50%, #f3e8ff 75%, #e9d5ff 100%)'
-            }}
-            onAnimationComplete={() => {
-              // Forçar ativação de áudio após a página carregar
-              setTimeout(() => {
-                // Simular cliques para ativar contexto de áudio
-                ['click', 'touchstart', 'keydown'].forEach(eventType => {
-                  const event = new Event(eventType, { bubbles: true })
-                  document.dispatchEvent(event)
-                })
-                
-                // Tentar reproduzir todos os áudios na página
-                if (memory.music) {
-                  const audioElements = document.querySelectorAll('audio')
-                  audioElements.forEach(async audio => {
-                    try {
-                      audio.volume = 0.5
-                      await audio.play()
-                    } catch (error) {
-                      console.log('Autoplay blocked:', error)
-                    }
-                  })
-                }
-              }, 800)
-            }}
-          >
-            <div className="min-h-screen py-4 sm:py-8">
-              <div className="container mx-auto px-4 sm:px-6">
-                {/* Header */}
-                <motion.div
-                  className="text-center mb-6 sm:mb-8"
-                  initial={{ y: -50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <div className="flex items-center justify-center mb-4 px-2">
-                    <motion.div
-                      animate={{ 
-                        scale: [1, 1.2, 1],
-                        rotate: [0, 15, -15, 0]
-                      }}
-                      transition={{ 
-                        duration: 2,
-                        repeat: Infinity,
-                        repeatType: "reverse"
-                      }}
-                    >
-                      <Heart className="text-rose-500 mr-2 drop-shadow-lg" size={36} />
-                    </motion.div>
-                    <h1 className="text-2xl sm:text-4xl md:text-6xl font-bold bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 bg-clip-text text-transparent text-center leading-tight">
-                      {memory.title || 'Nossa Memória Especial'}
-                    </h1>
-                    <motion.div
-                      animate={{ 
-                        scale: [1, 1.2, 1],
-                        rotate: [0, -15, 15, 0]
-                      }}
-                      transition={{ 
-                        duration: 2,
-                        repeat: Infinity,
-                        repeatType: "reverse",
-                        delay: 0.5
-                      }}
-                    >
-                      <Heart className="text-rose-500 ml-2 drop-shadow-lg" size={36} />
-                    </motion.div>
-                  </div>
-                  <motion.p 
-                    className="text-lg sm:text-xl text-rose-600 max-w-2xl mx-auto font-medium"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    ✨ Página criada com muito amor ❤️ ✨
-                  </motion.p>
-                </motion.div>
-
-                {/* Mensagem Principal */}
-                {memory.message && (
-                  <motion.div
-                    className="bg-white/90 backdrop-blur-md rounded-3xl p-6 sm:p-8 shadow-2xl border-2 border-rose-200 mb-6 sm:mb-8 max-w-4xl mx-auto relative overflow-hidden"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                  >
-                    {/* Decoração de fundo */}
-                    <div className="absolute top-0 left-0 w-full h-full opacity-5">
-                      <div className="absolute top-4 left-4 text-4xl">💖</div>
-                      <div className="absolute top-8 right-6 text-3xl">✨</div>
-                      <div className="absolute bottom-4 left-6 text-3xl">🌹</div>
-                      <div className="absolute bottom-8 right-4 text-4xl">💕</div>
-                    </div>
-                    
-                    <div className="text-center relative z-10">
-                      <motion.div
-                        animate={{ 
-                          rotate: [0, 10, -10, 0],
-                          scale: [1, 1.1, 1]
-                        }}
-                        transition={{ 
-                          duration: 3,
-                          repeat: Infinity,
-                          repeatType: "reverse"
-                        }}
-                      >
-                        <Sparkles className="text-rose-500 mx-auto mb-4 drop-shadow-md" size={40} />
-                      </motion.div>
-                      <p className="text-base sm:text-lg text-gray-700 leading-relaxed font-medium px-2">
-                        {memory.message}
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Galeria de Fotos e Vídeos */}
-                {(memory.photos.length > 0 || memory.videos.length > 0) && (
-                  <motion.div
-                    className="mb-6 sm:mb-8 max-w-4xl mx-auto"
-                    initial={{ y: 50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.6 }}
-                  >
-                    <div className="text-center mb-6">
-                      <motion.div
-                        animate={{ 
-                          scale: [1, 1.1, 1],
-                          rotateY: [0, 180, 360]
-                        }}
-                        transition={{ 
-                          duration: 4,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                      >
-                        <Camera className="text-rose-500 mx-auto mb-2 drop-shadow-md" size={32} />
-                      </motion.div>
-                      <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">
-                        📸🎥 Nossas Memórias 📸🎥
-                      </h2>
-                    </div>
-                    <MediaGallery photos={memory.photos} videos={memory.videos} autoPlay={true} interval={3500} />
-                  </motion.div>
-                )}
-
-                {/* Player de Música */}
-                {memory.music && (
-                  <motion.div
-                    className="mb-8 max-w-2xl mx-auto"
-                    initial={{ y: 50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.8 }}
-                  >
-                    <div className="text-center mb-6">
-                      <Music className="text-rose-500 mx-auto mb-2 animate-pulse" size={32} />
-                      <h2 className="text-2xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">Nossa Música</h2>
-                    </div>
-                    <MusicPlayer audioFile={memory.music} autoPlay={true} />
-                  </motion.div>
-                )}
-
-                {/* Countdown */}
-                {memory.specialDate && (
-                  <motion.div
-                    className="mb-6 sm:mb-8 max-w-2xl mx-auto"
-                    initial={{ y: 50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 1.0 }}
-                  >
-                    <div className="text-center mb-6">
-                      <motion.div
-                        animate={{ 
-                          rotate: [0, 360],
-                          scale: [1, 1.2, 1]
-                        }}
-                        transition={{ 
-                          duration: 8,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                      >
-                        <Clock className="text-rose-500 mx-auto mb-2 drop-shadow-md" size={32} />
-                      </motion.div>
-                      <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">
-                        ⏰ Tempo Juntos ⏰
-                      </h2>
-                      <p className="text-rose-600 font-medium mt-2">
-                        💕 Desde {new Date(memory.specialDate).toLocaleDateString('pt-BR')} 💕
-                      </p>
-                    </div>
-                    <div className="bg-white/90 backdrop-blur-md rounded-3xl p-6 shadow-2xl border-2 border-rose-200">
-                      <Countdown targetDate={new Date(memory.specialDate)} />
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Botões de Ação */}
-                <motion.div
-                  className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center max-w-2xl mx-auto px-4 pb-8"
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 1.2 }}
-                >
-                  <motion.button
-                    onClick={() => setShowResult(false)}
-                    className="w-full sm:w-auto flex items-center justify-center px-6 py-4 bg-white/90 text-rose-600 border-2 border-rose-400 rounded-2xl font-semibold hover:bg-rose-50 transition-all duration-300 shadow-lg backdrop-blur-sm"
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <ArrowLeft size={20} className="mr-2" />
-                    ✏️ Voltar ao Editor
-                  </motion.button>
-
-                  <motion.button
-                    onClick={async () => {
-                      try {
-                        const url = await generateMemoryUrl(memory)
-                        setMemoryUrl(url)
-                        setShowQRCode(true)
-                      } catch (error) {
-                        console.error('Erro ao gerar QR Code:', error)
-                        alert('Erro ao gerar QR Code. Tente novamente!')
-                      }
-                    }}
-                    className="w-full sm:w-auto flex items-center justify-center px-6 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-xl"
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <QrCode size={20} className="mr-2" />
-                    📱 Gerar QR Code
-                  </motion.button>
-
-                  <motion.button
-                    onClick={async () => {
-                      try {
-                        const memoryUrl = await generateMemoryUrl(memory)
-                        if (navigator.share) {
-                          navigator.share({
-                            title: `💕 ${memory.title}`,
-                            text: 'Olha que memória linda que criei para você! 💖',
-                            url: memoryUrl,
-                          })
-                        } else {
-                          navigator.clipboard.writeText(memoryUrl)
-                          alert('💕 Link copiado! Agora você pode compartilhar sua página do amor! ✨')
-                        }
-                      } catch (error) {
-                        console.error('Erro ao compartilhar:', error)
-                        alert('Erro ao gerar link. Tente novamente!')
-                      }
-                    }}
-                    className="w-full sm:w-auto flex items-center justify-center px-6 py-4 bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 text-white rounded-2xl font-semibold hover:from-rose-600 hover:via-pink-600 hover:to-purple-700 transition-all duration-300 shadow-xl"
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <Share size={20} className="mr-2" />
-                    💖 Compartilhar
-                  </motion.button>
-                </motion.div>
-
-                {/* Floating Hearts e Emojis Românticos */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                  {/* Corações grandes flutuantes */}
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <motion.div
-                      key={`heart-${i}`}
-                      className="absolute text-rose-300/60 text-2xl sm:text-3xl drop-shadow-lg"
-                      initial={{ 
-                        y: "100vh", 
-                        x: Math.random() * 1200,
-                        opacity: 0
-                      }}
-                      animate={{ 
-                        y: "-150px", 
-                        x: [
-                          Math.random() * 1200,
-                          Math.random() * 1200 + 100,
-                          Math.random() * 1200 - 100
-                        ],
-                        rotate: [0, 360, 720],
-                        opacity: [0, 1, 0]
-                      }}
-                      transition={{
-                        duration: 12 + Math.random() * 8,
-                        repeat: Infinity,
-                        delay: Math.random() * 5,
-                        ease: "easeInOut"
-                      }}
-                    >
-                      {['💖', '💕', '❤️', '💗', '💓'][Math.floor(Math.random() * 5)]}
-                    </motion.div>
-                  ))}
-
-                  {/* Emojis românticos pequenos */}
-                  {Array.from({ length: 20 }).map((_, i) => (
-                    <motion.div
-                      key={`emoji-${i}`}
-                      className="absolute text-pink-300/40 text-lg drop-shadow-md"
-                      initial={{ 
-                        y: "110vh", 
-                        x: Math.random() * 1400,
-                        scale: 0,
-                        rotate: 0
-                      }}
-                      animate={{ 
-                        y: "-120px", 
-                        x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth + 200 : 1400),
-                        scale: [0, 1, 1, 0],
-                        rotate: [0, 180, 360, 540],
-                        opacity: [0, 1, 1, 0]
-                      }}
-                      transition={{
-                        duration: 15 + Math.random() * 10,
-                        repeat: Infinity,
-                        delay: Math.random() * 8,
-                        ease: "linear"
-                      }}
-                    >
-                      {['✨', '🌟', '⭐', '🌹', '🌺', '🌸', '💐', '🎀', '�', '🦋', '�', '☁️'][Math.floor(Math.random() * 12)]}
-                    </motion.div>
-                  ))}
-
-                  {/* Corações pulsantes fixos */}
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <motion.div
-                      key={`pulse-${i}`}
-                      className="absolute text-rose-200/30 text-4xl"
-                      style={{
-                        top: `${20 + Math.random() * 60}%`,
-                        left: `${10 + Math.random() * 80}%`,
-                      }}
-                      animate={{ 
-                        scale: [1, 1.5, 1],
-                        opacity: [0.2, 0.6, 0.2],
-                        rotate: [0, 5, -5, 0]
-                      }}
-                      transition={{
-                        duration: 4 + Math.random() * 3,
-                        repeat: Infinity,
-                        delay: Math.random() * 2
-                      }}
-                    >
-                      💕
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal QR Code */}
-      {showQRCode && memory.id && memoryUrl && (
-        <QRCodeGenerator 
-          url={memoryUrl}
-          memoryTitle={memory.title}
-          onClose={() => setShowQRCode(false)}
-        />
-      )}
+      <style jsx>{`
+        @keyframes blob {
+          0% {
+            transform: translate(0px, 0px) scale(1);
+          }
+          33% {
+            transform: translate(30px, -50px) scale(1.1);
+          }
+          66% {
+            transform: translate(-20px, 20px) scale(0.9);
+          }
+          100% {
+            transform: translate(0px, 0px) scale(1);
+          }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+      `}</style>
     </div>
   )
 }

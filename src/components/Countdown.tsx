@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 
 interface CountdownProps {
   targetDate: Date
+  title?: string
 }
 
 interface TimeLeft {
@@ -14,7 +15,7 @@ interface TimeLeft {
   seconds: number
 }
 
-export default function Countdown({ targetDate }: CountdownProps) {
+export default function Countdown({ targetDate, title = "Contagem Regressiva" }: CountdownProps) {
   const [timeLeft, setTimeLeft] = useState<TimeLeft>({
     days: 0,
     hours: 0,
@@ -41,8 +42,10 @@ export default function Countdown({ targetDate }: CountdownProps) {
   }, [targetDate])
 
   return (
-    <div className="grid grid-cols-4 gap-4 text-center">
-      {[
+    <div className="text-center">
+      <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
+      <div className="grid grid-cols-4 gap-4 text-center">
+        {[
         { label: 'Dias', value: timeLeft.days },
         { label: 'Horas', value: timeLeft.hours },
         { label: 'Minutos', value: timeLeft.minutes },
@@ -61,6 +64,7 @@ export default function Countdown({ targetDate }: CountdownProps) {
           <div className="text-sm text-gray-600">{item.label}</div>
         </motion.div>
       ))}
+      </div>
     </div>
   )
 }
