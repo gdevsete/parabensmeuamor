@@ -30,10 +30,10 @@ Uma aplicação web romântica inspirada no Memoryiit para criar páginas digita
 ### Instalação
 ```bash
 # Clone o repositório
-git clone <seu-repositorio>
+git clone https://github.com/gdevsete/parabensmeuamor.git
 
 # Entre na pasta do projeto
-cd memoryiit
+cd parabensmeuamor
 
 # Instale as dependências
 npm install
@@ -128,9 +128,9 @@ vercel --prod
 npm install --save-dev gh-pages
 
 # Adicionar ao package.json
-"homepage": "https://seuusuario.github.io/memoryiit",
+"homepage": "https://gdevsete.github.io/parabensmeuamor",
 "scripts": {
-  "predeploy": "npm run build",
+  "predeploy": "npm run build", 
   "deploy": "gh-pages -d out"
 }
 ```

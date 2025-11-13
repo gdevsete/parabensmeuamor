@@ -1,6 +1,7 @@
 {
   "name": "love-memory",
   "version": "0.1.0",
+  "homepage": "https://gdevsete.github.io/parabensmeuamor",
   "private": true,
   "scripts": {
     "dev": "next dev",
