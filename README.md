@@ -104,6 +104,37 @@ memoryiit/
 └── next.config.js         # Configuração Next.js
 ```
 
+## 🌐 Hospedagem e Deploy
+
+### Opções de Hospedagem Gratuita
+
+#### 1. Vercel (Recomendado)
+```bash
+# Instalar Vercel CLI
+npm i -g vercel
+
+# Fazer deploy
+vercel --prod
+```
+
+#### 2. Netlify
+1. Conecte seu repositório GitHub
+2. Configure build: `npm run build`
+3. Pasta de deploy: `out`
+
+#### 3. GitHub Pages
+```bash
+# Instalar gh-pages
+npm install --save-dev gh-pages
+
+# Adicionar ao package.json
+"homepage": "https://seuusuario.github.io/memoryiit",
+"scripts": {
+  "predeploy": "npm run build",
+  "deploy": "gh-pages -d out"
+}
+```
+
 ## 💡 Funcionalidades Futuras
 
 - [ ] Sistema de pagamento integrado
