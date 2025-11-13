@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Heart, Music, Camera, Clock, Sparkles, Upload, Play, Pause, ArrowLeft, Share } from 'lucide-react'
+import { Heart, Music, Camera, Clock, Sparkles, Upload, Play, Pause, ArrowLeft, Share, QrCode } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import MediaGallery from '@/components/MediaGallery'
 import MusicPlayer from '@/components/MusicPlayer'
 import Countdown from '@/components/Countdown'
+import QRCodeGenerator from '@/components/QRCodeGenerator'
 
 interface Memory {
   id: string
@@ -17,6 +18,17 @@ interface Memory {
   music?: File
   countdownDate?: Date
   specialDate: string
+}
+
+interface SavedMemory {
+  id: string
+  title: string
+  message: string
+  photos: string[] // URLs das imagens convertidas para base64
+  videos: string[] // URLs dos vídeos convertidos para base64
+  music?: string // URL da música convertida para base64
+  specialDate: string
+  createdAt: string
 }
 
 export default function HomePage() {
@@ -32,6 +44,63 @@ export default function HomePage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [showEmojiRain, setShowEmojiRain] = useState(false)
   const [showResult, setShowResult] = useState(false)
+  const [showQRCode, setShowQRCode] = useState(false)
+
+  // Função para converter File para base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = error => reject(error)
+    })
+  }
+
+  // Função para salvar memória permanentemente
+  const saveMemoryPermanently = async (memory: Memory): Promise<string> => {
+    try {
+      // Converter todos os arquivos para base64
+      const photosBase64 = await Promise.all(
+        memory.photos.map(photo => fileToBase64(photo))
+      )
+      
+      const videosBase64 = await Promise.all(
+        memory.videos.map(video => fileToBase64(video))
+      )
+      
+      const musicBase64 = memory.music ? await fileToBase64(memory.music) : undefined
+
+      const savedMemory: SavedMemory = {
+        id: memory.id,
+        title: memory.title,
+        message: memory.message,
+        photos: photosBase64,
+        videos: videosBase64,
+        music: musicBase64,
+        specialDate: memory.specialDate,
+        createdAt: new Date().toISOString()
+      }
+
+      // Salvar no localStorage
+      const existingMemories = localStorage.getItem('memories')
+      const memories: SavedMemory[] = existingMemories ? JSON.parse(existingMemories) : []
+      
+      // Verificar se já existe uma memória com este ID
+      const existingIndex = memories.findIndex(m => m.id === memory.id)
+      if (existingIndex >= 0) {
+        memories[existingIndex] = savedMemory
+      } else {
+        memories.push(savedMemory)
+      }
+      
+      localStorage.setItem('memories', JSON.stringify(memories))
+      
+      return memory.id
+    } catch (error) {
+      console.error('Erro ao salvar memória:', error)
+      throw error
+    }
+  }
 
   const triggerConfetti = () => {
     confetti({
@@ -414,17 +483,30 @@ export default function HomePage() {
                   </div>
 
                   <motion.button
-                    onClick={() => {
-                      triggerConfetti()
-                      triggerEmojiRain()
-                      setMemory(prev => ({ ...prev, id: Date.now().toString() }))
-                      setShowResult(true)
-                      
-                      // Simular interação para permitir autoplay de áudio
-                      setTimeout(() => {
-                        document.dispatchEvent(new Event('click', { bubbles: true }))
-                        document.dispatchEvent(new Event('touchstart', { bubbles: true }))
-                      }, 100)
+                    onClick={async () => {
+                      try {
+                        triggerConfetti()
+                        triggerEmojiRain()
+                        
+                        // Gerar ID único para a memória
+                        const memoryId = `memory_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                        const updatedMemory = { ...memory, id: memoryId }
+                        setMemory(updatedMemory)
+                        
+                        // Salvar memória permanentemente
+                        await saveMemoryPermanently(updatedMemory)
+                        
+                        setShowResult(true)
+                        
+                        // Simular interação para permitir autoplay de áudio
+                        setTimeout(() => {
+                          document.dispatchEvent(new Event('click', { bubbles: true }))
+                          document.dispatchEvent(new Event('touchstart', { bubbles: true }))
+                        }, 100)
+                      } catch (error) {
+                        console.error('Erro ao criar memória:', error)
+                        alert('Erro ao salvar a memória. Tente novamente.')
+                      }
                     }}
                     className="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-pink-600 hover:to-purple-700 transition-all duration-300 shadow-lg"
                     whileHover={{ scale: 1.02 }}
@@ -676,7 +758,7 @@ export default function HomePage() {
 
                 {/* Botões de Ação */}
                 <motion.div
-                  className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center max-w-lg mx-auto px-4 pb-8"
+                  className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center max-w-2xl mx-auto px-4 pb-8"
                   initial={{ y: 50, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 1.2 }}
@@ -692,15 +774,26 @@ export default function HomePage() {
                   </motion.button>
 
                   <motion.button
+                    onClick={() => setShowQRCode(true)}
+                    className="w-full sm:w-auto flex items-center justify-center px-6 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-xl"
+                    whileHover={{ scale: 1.03, y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <QrCode size={20} className="mr-2" />
+                    📱 Gerar QR Code
+                  </motion.button>
+
+                  <motion.button
                     onClick={() => {
+                      const memoryUrl = `${window.location.origin}/memoria/${memory.id}`
                       if (navigator.share) {
                         navigator.share({
-                          title: memory.title,
-                          text: memory.message,
-                          url: window.location.href,
+                          title: `💕 ${memory.title}`,
+                          text: 'Olha que memória linda que criei para você! 💖',
+                          url: memoryUrl,
                         })
                       } else {
-                        navigator.clipboard.writeText(window.location.href)
+                        navigator.clipboard.writeText(memoryUrl)
                         alert('💕 Link copiado! Agora você pode compartilhar sua página do amor! ✨')
                       }
                     }}
@@ -804,6 +897,15 @@ export default function HomePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modal QR Code */}
+      {showQRCode && memory.id && (
+        <QRCodeGenerator 
+          url={`${typeof window !== 'undefined' ? window.location.origin : ''}/memoria/${memory.id}`}
+          memoryTitle={memory.title}
+          onClose={() => setShowQRCode(false)}
+        />
+      )}
     </div>
   )
 }

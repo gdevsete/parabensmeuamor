@@ -4,16 +4,33 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, ChevronRight, X, Play, Pause } from 'lucide-react'
 
+interface MediaItem {
+  file?: File
+  url?: string
+  type: 'image' | 'video'
+}
+
 interface MediaGalleryProps {
-  photos: File[]
-  videos: File[]
+  photos: (File | string)[]
+  videos: (File | string)[]
   className?: string
   autoPlay?: boolean
   interval?: number
 }
 
 export default function MediaGallery({ photos, videos, className = '', autoPlay = false, interval = 4000 }: MediaGalleryProps) {
-  const allMedia = [...photos.map(f => ({ file: f, type: 'image' as const })), ...videos.map(f => ({ file: f, type: 'video' as const }))]
+  const allMedia: MediaItem[] = [
+    ...photos.map(item => ({ 
+      file: typeof item === 'string' ? undefined : item, 
+      url: typeof item === 'string' ? item : undefined, 
+      type: 'image' as const 
+    })),
+    ...videos.map(item => ({ 
+      file: typeof item === 'string' ? undefined : item, 
+      url: typeof item === 'string' ? item : undefined, 
+      type: 'video' as const 
+    }))
+  ]
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [videoPlaying, setVideoPlaying] = useState(false)
@@ -68,14 +85,14 @@ export default function MediaGallery({ photos, videos, className = '', autoPlay 
           >
             {currentMedia.type === 'image' ? (
               <img
-                src={URL.createObjectURL(currentMedia.file)}
+                src={currentMedia.url || (currentMedia.file ? URL.createObjectURL(currentMedia.file) : '')}
                 alt={`Memória ${currentIndex + 1}`}
                 className="w-full h-full object-contain cursor-pointer hover:scale-105 transition-transform duration-300"
                 onClick={() => setIsFullscreen(true)}
               />
             ) : (
               <video
-                src={URL.createObjectURL(currentMedia.file)}
+                src={currentMedia.url || (currentMedia.file ? URL.createObjectURL(currentMedia.file) : '')}
                 className="w-full h-full object-contain cursor-pointer"
                 controls={!isFullscreen}
                 onClick={() => setIsFullscreen(true)}
@@ -158,13 +175,13 @@ export default function MediaGallery({ photos, videos, className = '', autoPlay 
             >
               {currentMedia.type === 'image' ? (
                 <img
-                  src={URL.createObjectURL(currentMedia.file)}
+                  src={currentMedia.url || (currentMedia.file ? URL.createObjectURL(currentMedia.file) : '')}
                   alt={`Memória ${currentIndex + 1}`}
                   className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                 />
               ) : (
                 <video
-                  src={URL.createObjectURL(currentMedia.file)}
+                  src={currentMedia.url || (currentMedia.file ? URL.createObjectURL(currentMedia.file) : '')}
                   className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                   controls
                   autoPlay
