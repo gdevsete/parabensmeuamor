@@ -5,12 +5,13 @@ import { Play, Pause, Volume2, VolumeX } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface MusicPlayerProps {
-  audioFile: File
+  audioFile?: File
+  audioUrl?: string
   className?: string
   autoPlay?: boolean
 }
 
-export default function MusicPlayer({ audioFile, className = '', autoPlay = false }: MusicPlayerProps) {
+export default function MusicPlayer({ audioFile, audioUrl, className = '', autoPlay = false }: MusicPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
@@ -18,19 +19,28 @@ export default function MusicPlayer({ audioFile, className = '', autoPlay = fals
   const [currentTime, setCurrentTime] = useState(0)
   const [showAutoplayHint, setShowAutoplayHint] = useState(false)
   const [userInteracted, setUserInteracted] = useState(false)
-  const [audioUrl, setAudioUrl] = useState<string>('')
+  const [finalAudioUrl, setFinalAudioUrl] = useState<string>('')
 
   // Criar URL do áudio
   useEffect(() => {
-    const url = URL.createObjectURL(audioFile)
-    setAudioUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [audioFile])
+    if (audioUrl) {
+      setFinalAudioUrl(audioUrl)
+    } else if (audioFile) {
+      const url = URL.createObjectURL(audioFile)
+      setFinalAudioUrl(url)
+      return () => URL.revokeObjectURL(url)
+    }
+  }, [audioFile, audioUrl])
+  
+  // Se não há áudio, não renderizar nada
+  if (!finalAudioUrl && !audioFile && !audioUrl) {
+    return null
+  }
 
   // Configurar áudio e eventos
   useEffect(() => {
     const audio = audioRef.current
-    if (!audio || !audioUrl) return
+    if (!audio || !finalAudioUrl) return
 
     const setAudioData = () => {
       if (audio.duration && !isNaN(audio.duration)) {
@@ -64,7 +74,7 @@ export default function MusicPlayer({ audioFile, className = '', autoPlay = fals
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnded)
     }
-  }, [audioUrl])
+  }, [finalAudioUrl])
 
   // Gerenciar interação do usuário e autoplay
   useEffect(() => {
@@ -90,17 +100,17 @@ export default function MusicPlayer({ audioFile, className = '', autoPlay = fals
 
   // Tentar autoplay assim que possível
   useEffect(() => {
-    if (autoPlay && audioUrl && userInteracted && !isPlaying) {
+    if (autoPlay && finalAudioUrl && userInteracted && !isPlaying) {
       const timer = setTimeout(() => {
         attemptPlay()
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [autoPlay, audioUrl, userInteracted, isPlaying])
+  }, [autoPlay, finalAudioUrl, userInteracted, isPlaying])
 
   // Tentar autoplay imediato (pode falhar devido a políticas do browser)
   useEffect(() => {
-    if (autoPlay && audioUrl) {
+    if (autoPlay && finalAudioUrl) {
       const timer = setTimeout(async () => {
         const audio = audioRef.current
         if (audio && !isPlaying) {
@@ -126,7 +136,7 @@ export default function MusicPlayer({ audioFile, className = '', autoPlay = fals
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [autoPlay, audioUrl])
+  }, [autoPlay, finalAudioUrl])
 
   const attemptPlay = async () => {
     const audio = audioRef.current
@@ -235,13 +245,13 @@ export default function MusicPlayer({ audioFile, className = '', autoPlay = fals
 
       <audio
         ref={audioRef}
-        src={audioUrl}
+        src={finalAudioUrl}
         preload="auto"
         crossOrigin="anonymous"
       />
 
       {/* Banner de Ativação de Som */}
-      {(!userInteracted || (!isPlaying && audioUrl)) && (
+      {(!userInteracted || (!isPlaying && finalAudioUrl)) && (
         <motion.div
           className="absolute -top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm"
           initial={{ opacity: 0, y: 10 }}

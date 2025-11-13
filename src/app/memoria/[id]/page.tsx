@@ -208,8 +208,8 @@ export default function MemoriaPage() {
                 </h2>
               </div>
               <MediaGallery 
-                photos={memory.photos.map(url => ({ file: new File([], ''), url }) as any)} 
-                videos={memory.videos.map(url => ({ file: new File([], ''), url }) as any)}
+                photos={memory.photos} 
+                videos={memory.videos}
                 autoPlay={true} 
                 interval={3500} 
               />
@@ -227,7 +227,7 @@ export default function MemoriaPage() {
               <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">Nossa Música</h2>
               </div>
-              <MusicPlayer audioFile={new File([], '')} autoPlay={true} />
+              <MusicPlayer audioUrl={memory.music} autoPlay={true} />
             </motion.div>
           )}
 
