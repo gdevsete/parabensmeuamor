@@ -29,13 +29,19 @@ export default function MemoriaPage() {
   const [showQRCode, setShowQRCode] = useState(false)
 
   useEffect(() => {
-    // Buscar memória no localStorage
-    const savedMemories = localStorage.getItem('memories')
-    if (savedMemories) {
-      const memories: Memory[] = JSON.parse(savedMemories)
-      const foundMemory = memories.find(m => m.id === memoryId)
-      if (foundMemory) {
-        setMemory(foundMemory)
+    // Buscar memória no localStorage (apenas no cliente)
+    if (typeof window !== 'undefined') {
+      try {
+        const savedMemories = localStorage.getItem('memories')
+        if (savedMemories) {
+          const memories: Memory[] = JSON.parse(savedMemories)
+          const foundMemory = memories.find(m => m.id === memoryId)
+          if (foundMemory) {
+            setMemory(foundMemory)
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao acessar localStorage:', error)
       }
     }
     setLoading(false)

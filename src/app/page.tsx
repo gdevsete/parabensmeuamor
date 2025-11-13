@@ -45,6 +45,7 @@ export default function HomePage() {
   const [showEmojiRain, setShowEmojiRain] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
 
   // Função para converter File para base64
   const fileToBase64 = (file: File): Promise<string> => {
@@ -59,6 +60,12 @@ export default function HomePage() {
   // Função para salvar memória permanentemente
   const saveMemoryPermanently = async (memory: Memory): Promise<string> => {
     try {
+      // Verificar se está no navegador
+      if (typeof window === 'undefined') {
+        console.log('Salvamento adiado - não está no navegador')
+        return memory.id
+      }
+
       // Converter todos os arquivos para base64
       const photosBase64 = await Promise.all(
         memory.photos.map(photo => fileToBase64(photo))
@@ -81,19 +88,25 @@ export default function HomePage() {
         createdAt: new Date().toISOString()
       }
 
-      // Salvar no localStorage
-      const existingMemories = localStorage.getItem('memories')
-      const memories: SavedMemory[] = existingMemories ? JSON.parse(existingMemories) : []
-      
-      // Verificar se já existe uma memória com este ID
-      const existingIndex = memories.findIndex(m => m.id === memory.id)
-      if (existingIndex >= 0) {
-        memories[existingIndex] = savedMemory
-      } else {
-        memories.push(savedMemory)
+      // Salvar no localStorage (apenas no cliente)
+      try {
+        const existingMemories = localStorage.getItem('memories')
+        const memories: SavedMemory[] = existingMemories ? JSON.parse(existingMemories) : []
+        
+        // Verificar se já existe uma memória com este ID
+        const existingIndex = memories.findIndex(m => m.id === memory.id)
+        if (existingIndex >= 0) {
+          memories[existingIndex] = savedMemory
+        } else {
+          memories.push(savedMemory)
+        }
+        
+        localStorage.setItem('memories', JSON.stringify(memories))
+        console.log('Memória salva com sucesso:', memory.id)
+      } catch (storageError) {
+        console.warn('Erro ao acessar localStorage:', storageError)
+        // Continuar mesmo se localStorage falhar
       }
-      
-      localStorage.setItem('memories', JSON.stringify(memories))
       
       return memory.id
     } catch (error) {
@@ -484,7 +497,21 @@ export default function HomePage() {
 
                   <motion.button
                     onClick={async () => {
+                      if (isCreating) return
+                      
                       try {
+                        setIsCreating(true)
+                        
+                        // Validação básica
+                        if (!memory.title.trim()) {
+                          alert('Por favor, digite um título para sua memória! 💕')
+                          return
+                        }
+                        if (!memory.message.trim()) {
+                          alert('Por favor, escreva uma mensagem carinhosa! 💖')
+                          return
+                        }
+
                         triggerConfetti()
                         triggerEmojiRain()
                         
@@ -493,26 +520,48 @@ export default function HomePage() {
                         const updatedMemory = { ...memory, id: memoryId }
                         setMemory(updatedMemory)
                         
-                        // Salvar memória permanentemente
-                        await saveMemoryPermanently(updatedMemory)
+                        // Tentar salvar memória permanentemente
+                        try {
+                          await saveMemoryPermanently(updatedMemory)
+                          console.log('Memória salva com ID:', memoryId)
+                        } catch (saveError) {
+                          console.warn('Erro ao salvar no localStorage, mas continuando:', saveError)
+                          // Continuar mesmo se o salvamento falhar
+                        }
                         
                         setShowResult(true)
                         
                         // Simular interação para permitir autoplay de áudio
                         setTimeout(() => {
-                          document.dispatchEvent(new Event('click', { bubbles: true }))
-                          document.dispatchEvent(new Event('touchstart', { bubbles: true }))
+                          if (typeof window !== 'undefined') {
+                            document.dispatchEvent(new Event('click', { bubbles: true }))
+                            document.dispatchEvent(new Event('touchstart', { bubbles: true }))
+                          }
                         }, 100)
                       } catch (error) {
-                        console.error('Erro ao criar memória:', error)
-                        alert('Erro ao salvar a memória. Tente novamente.')
+                        console.error('Erro geral ao criar memória:', error)
+                        alert('Oops! Algo deu errado. Tente novamente! 💕')
+                      } finally {
+                        setIsCreating(false)
                       }
                     }}
-                    className="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-pink-600 hover:to-purple-700 transition-all duration-300 shadow-lg"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    className={`w-full text-white py-4 rounded-xl font-bold text-lg transition-all duration-300 shadow-lg ${
+                      isCreating 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700'
+                    }`}
+                    whileHover={!isCreating ? { scale: 1.02 } : {}}
+                    whileTap={!isCreating ? { scale: 0.98 } : {}}
+                    disabled={isCreating}
                   >
-                    🚀 Criar Página do Amor
+                    {isCreating ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                        💕 Criando Memória...
+                      </span>
+                    ) : (
+                      '🚀 Criar Página do Amor'
+                    )}
                   </motion.button>
                 </div>
               </div>
