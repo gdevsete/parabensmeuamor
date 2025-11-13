@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { Play, Pause, Volume2, VolumeX } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -20,6 +20,54 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
   const [showAutoplayHint, setShowAutoplayHint] = useState(false)
   const [userInteracted, setUserInteracted] = useState(false)
   const [finalAudioUrl, setFinalAudioUrl] = useState<string>('')
+
+  // Função para tentar reproduzir áudio (usando useCallback para evitar re-renderizações)
+  const attemptPlay = useCallback(async () => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    try {
+      // Garantir que o áudio está carregado
+      if (audio.readyState < 2) {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 5000)
+          audio.addEventListener('canplay', () => {
+            clearTimeout(timeout)
+            resolve(undefined)
+          }, { once: true })
+          audio.load() // Forçar carregamento
+        })
+      }
+      
+      // Tentar diferentes configurações
+      audio.volume = 0.5
+      audio.muted = false
+      
+      const playPromise = audio.play()
+      if (playPromise) {
+        await playPromise
+        setIsPlaying(true)
+        setShowAutoplayHint(false)
+        setUserInteracted(true)
+      }
+    } catch (error) {
+      console.log('Autoplay prevented:', error)
+      setShowAutoplayHint(true)
+      setIsPlaying(false)
+      
+      // Tentar novamente após um tempo
+      setTimeout(() => {
+        if (!isPlaying && audioRef.current) {
+          audioRef.current.play().then(() => {
+            setIsPlaying(true)
+            setShowAutoplayHint(false)
+          }).catch(() => {
+            // Falha silenciosa
+          })
+        }
+      }, 2000)
+    }
+  }, [isPlaying])
 
   // Criar URL do áudio
   useEffect(() => {
@@ -96,7 +144,7 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
         document.removeEventListener(event, handleUserInteraction)
       })
     }
-  }, [autoPlay, isPlaying])
+  }, [autoPlay, isPlaying, attemptPlay])
 
   // Tentar autoplay assim que possível
   useEffect(() => {
@@ -106,7 +154,7 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [autoPlay, finalAudioUrl, userInteracted, isPlaying])
+  }, [autoPlay, finalAudioUrl, userInteracted, isPlaying, attemptPlay])
 
   // Tentar autoplay imediato (pode falhar devido a políticas do browser)
   useEffect(() => {
@@ -137,53 +185,6 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
       return () => clearTimeout(timer)
     }
   }, [autoPlay, finalAudioUrl])
-
-  const attemptPlay = async () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    try {
-      // Garantir que o áudio está carregado
-      if (audio.readyState < 2) {
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Timeout')), 5000)
-          audio.addEventListener('canplay', () => {
-            clearTimeout(timeout)
-            resolve(undefined)
-          }, { once: true })
-          audio.load() // Forçar carregamento
-        })
-      }
-      
-      // Tentar diferentes configurações
-      audio.volume = 0.5
-      audio.muted = false
-      
-      const playPromise = audio.play()
-      if (playPromise) {
-        await playPromise
-        setIsPlaying(true)
-        setShowAutoplayHint(false)
-        setUserInteracted(true)
-      }
-    } catch (error) {
-      console.log('Autoplay prevented:', error)
-      setShowAutoplayHint(true)
-      setIsPlaying(false)
-      
-      // Tentar novamente após um tempo
-      setTimeout(() => {
-        if (!isPlaying && audioRef.current) {
-          audioRef.current.play().then(() => {
-            setIsPlaying(true)
-            setShowAutoplayHint(false)
-          }).catch(() => {
-            // Falha silenciosa
-          })
-        }
-      }, 2000)
-    }
-  }
 
   const togglePlayPause = async () => {
     const audio = audioRef.current
@@ -343,7 +344,7 @@ export default function MusicPlayer({ audioFile, audioUrl, className = '', autoP
         <div className="flex-1 w-full sm:w-auto">
           <div className="flex flex-col sm:flex-row items-center justify-between text-sm text-rose-600 mb-2 space-y-1 sm:space-y-0">
             <span className="font-medium truncate max-w-full sm:max-w-xs text-center sm:text-left">
-              🎵 {audioFile.name.length > 30 ? audioFile.name.substring(0, 30) + '...' : audioFile.name}
+              🎵 {audioFile?.name ? (audioFile.name.length > 30 ? audioFile.name.substring(0, 30) + '...' : audioFile.name) : 'Nossa Música Especial'}
             </span>
             <span className="font-mono text-xs bg-rose-100 px-2 py-1 rounded-full">
               {formatTime(currentTime)} / {formatTime(duration)}
