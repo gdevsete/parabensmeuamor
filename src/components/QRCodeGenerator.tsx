@@ -14,6 +14,8 @@ interface QRCodeGeneratorProps {
 export default function QRCodeGenerator({ url, memoryTitle, onClose }: QRCodeGeneratorProps) {
   const [qrCodeDataURL, setQrCodeDataURL] = useState('')
   const [copied, setCopied] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [progress, setProgress] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -21,23 +23,40 @@ export default function QRCodeGenerator({ url, memoryTitle, onClose }: QRCodeGen
   }, [url])
 
   const generateQRCode = async () => {
+    setIsGenerating(true)
+    setProgress(0)
+    
     try {
+      // Simular progresso para melhor UX
+      const progressTimer = setTimeout(() => setProgress(30), 100)
+      const progressTimer2 = setTimeout(() => setProgress(60), 300)
+      const progressTimer3 = setTimeout(() => setProgress(90), 500)
+
       const canvas = canvasRef.current
       if (!canvas) return
 
+      // Configurações otimizadas
       await QRCode.toCanvas(canvas, url, {
-        width: 300,
-        margin: 2,
+        width: 280,
+        margin: 1,
         color: {
           dark: '#ec4899', // Rosa
           light: '#ffffff'
         },
-        errorCorrectionLevel: 'H'
+        errorCorrectionLevel: 'L' // Menor correção = QR menor
       })
 
+      clearTimeout(progressTimer)
+      clearTimeout(progressTimer2)
+      clearTimeout(progressTimer3)
+      setProgress(100)
+
       // Converter canvas para data URL
-      const dataURL = canvas.toDataURL('image/png')
-      setQrCodeDataURL(dataURL)
+      setTimeout(() => {
+        const dataURL = canvas.toDataURL('image/png')
+        setQrCodeDataURL(dataURL)
+        setIsGenerating(false)
+      }, 200)
     } catch (error) {
       console.error('Erro ao gerar QR Code:', error)
     }
@@ -117,10 +136,24 @@ export default function QRCodeGenerator({ url, memoryTitle, onClose }: QRCodeGen
           {/* QR Code */}
           <div className="flex justify-center mb-6">
             <div className="bg-gradient-to-br from-pink-100 to-purple-100 p-4 rounded-2xl shadow-lg">
-              <canvas
-                ref={canvasRef}
-                className="rounded-xl shadow-md"
-              />
+              {isGenerating ? (
+                <div className="w-[280px] h-[280px] flex flex-col items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4"></div>
+                  <p className="text-sm text-gray-600 mb-2">Gerando QR Code...</p>
+                  <div className="w-48 bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-pink-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-500 mt-1">{progress}%</span>
+                </div>
+              ) : (
+                <canvas
+                  ref={canvasRef}
+                  className="rounded-xl shadow-md"
+                />
+              )}
             </div>
           </div>
 

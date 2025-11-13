@@ -1,10 +1,11 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Heart, Share2, Download } from 'lucide-react'
 import Link from 'next/link'
+import LZString from 'lz-string'
 import MediaGallery from '@/components/MediaGallery'
 import MusicPlayer from '@/components/MusicPlayer'
 import Countdown from '@/components/Countdown'
@@ -32,18 +33,30 @@ export default function MemoriaPage() {
     if (typeof window !== 'undefined') {
       // Primeiro, tentar buscar dados da URL
       const urlParams = new URLSearchParams(window.location.search)
-      const encodedData = urlParams.get('data')
+      const compressedData = urlParams.get('data')
       
-      if (encodedData) {
+      if (compressedData) {
         try {
-          // Decodificar dados da URL
-          const decodedData = decodeURIComponent(encodedData)
-          const memoryData: Memory = JSON.parse(decodedData)
-          setMemory(memoryData)
-          setLoading(false)
-          return
+          // Descomprimir dados da URL
+          const decodedData = LZString.decompressFromEncodedURIComponent(compressedData)
+          if (decodedData) {
+            const memoryData: Memory = JSON.parse(decodedData)
+            setMemory(memoryData)
+            setLoading(false)
+            return
+          }
         } catch (error) {
-          console.error('Erro ao decodificar dados da URL:', error)
+          console.error('Erro ao descomprimir dados da URL:', error)
+          // Tentar método antigo como fallback
+          try {
+            const decodedData = decodeURIComponent(compressedData)
+            const memoryData: Memory = JSON.parse(decodedData)
+            setMemory(memoryData)
+            setLoading(false)
+            return
+          } catch (legacyError) {
+            console.error('Erro no fallback de decodificação:', legacyError)
+          }
         }
       }
 

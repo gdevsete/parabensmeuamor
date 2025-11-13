@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Heart, Music, Camera, Clock, Sparkles, Upload, Play, Pause, ArrowLeft, Share, QrCode } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
+import LZString from 'lz-string'
 import MediaGallery from '@/components/MediaGallery'
 import MusicPlayer from '@/components/MusicPlayer'
 import Countdown from '@/components/Countdown'
@@ -48,13 +49,33 @@ export default function HomePage() {
   const [isCreating, setIsCreating] = useState(false)
   const [memoryUrl, setMemoryUrl] = useState('')
 
-  // Função para converter File para base64
-  const fileToBase64 = (file: File): Promise<string> => {
+  // Função para converter File para base64 com compressão
+  const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.readAsDataURL(file)
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = error => reject(error)
+      if (file.type.startsWith('image/')) {
+        // Otimizar imagens
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        const img = new Image()
+        
+        img.onload = () => {
+          const ratio = Math.min(maxWidth / img.width, maxWidth / img.height)
+          canvas.width = img.width * ratio
+          canvas.height = img.height * ratio
+          
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
+          resolve(canvas.toDataURL('image/jpeg', quality))
+        }
+        
+        img.onerror = reject
+        img.src = URL.createObjectURL(file)
+      } else {
+        // Para vídeos e áudio, usar reader normal
+        const reader = new FileReader()
+        reader.readAsDataURL(file)
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = error => reject(error)
+      }
     })
   }
 
@@ -116,21 +137,34 @@ export default function HomePage() {
     }
   }
 
-  // Função para gerar URL com dados embutidos
+  // Função para gerar URL com dados embutidos e comprimidos
   const generateMemoryUrl = async (memory: Memory): Promise<string> => {
     if (typeof window === 'undefined') return ''
     
     try {
-      // Converter arquivos para base64 para URL
+      // Limitar quantidade de fotos/vídeos para URL
+      const maxPhotos = Math.min(memory.photos.length, 3)
+      const maxVideos = Math.min(memory.videos.length, 1)
+      
+      // Converter arquivos para base64 otimizado
       const photosBase64 = await Promise.all(
-        memory.photos.map(photo => fileToBase64(photo))
+        memory.photos.slice(0, maxPhotos).map(photo => fileToBase64(photo, 600, 0.6))
       )
       
-      const videosBase64 = await Promise.all(
-        memory.videos.map(video => fileToBase64(video))
-      )
+      // Para vídeos, apenas converter se pequenos
+      const videosBase64: string[] = []
+      for (let i = 0; i < maxVideos; i++) {
+        const video = memory.videos[i]
+        if (video && video.size < 5 * 1024 * 1024) { // Apenas vídeos < 5MB
+          videosBase64.push(await fileToBase64(video))
+        }
+      }
       
-      const musicBase64 = memory.music ? await fileToBase64(memory.music) : undefined
+      // Para música, apenas se pequena
+      let musicBase64: string | undefined
+      if (memory.music && memory.music.size < 3 * 1024 * 1024) { // Apenas música < 3MB
+        musicBase64 = await fileToBase64(memory.music)
+      }
 
       const memoryData = {
         id: memory.id,
@@ -143,9 +177,29 @@ export default function HomePage() {
         createdAt: new Date().toISOString()
       }
 
-      // Codificar dados na URL
-      const encodedData = encodeURIComponent(JSON.stringify(memoryData))
-      return `${window.location.origin}/memoria/${memory.id}?data=${encodedData}`
+      // Comprimir e codificar dados na URL
+      const jsonString = JSON.stringify(memoryData)
+      const compressed = LZString.compressToEncodedURIComponent(jsonString)
+      
+      // Verificar se URL não ficou muito grande (limite de ~8KB para ser seguro)
+      if (compressed.length > 8000) {
+        console.warn('URL muito grande, usando versão reduzida')
+        // Versão reduzida sem mídia
+        const reducedData = {
+          id: memory.id,
+          title: memory.title,
+          message: memory.message,
+          photos: [],
+          videos: [],
+          music: undefined,
+          specialDate: memory.specialDate,
+          createdAt: new Date().toISOString()
+        }
+        const reducedCompressed = LZString.compressToEncodedURIComponent(JSON.stringify(reducedData))
+        return `${window.location.origin}/memoria/${memory.id}?data=${reducedCompressed}`
+      }
+      
+      return `${window.location.origin}/memoria/${memory.id}?data=${compressed}`
     } catch (error) {
       console.error('Erro ao gerar URL com dados:', error)
       // Fallback para URL simples
