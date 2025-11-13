@@ -31,57 +31,24 @@ export default function MemoriaPage() {
 
   useEffect(() => {
     const fetchMemory = async () => {
-      if (typeof window !== 'undefined') {
-        // Primeiro, tentar buscar dados da URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const compressedData = urlParams.get('data')
-        
-        if (compressedData) {
-          try {
-            // Descomprimir dados da URL
-            const decodedData = LZString.decompressFromEncodedURIComponent(compressedData)
-            if (decodedData) {
-              const memoryData: Memory = JSON.parse(decodedData)
-              setMemory(memoryData)
-              setLoading(false)
-              return
-            }
-          } catch (error) {
-            console.error('Erro ao descomprimir dados da URL:', error)
-          }
+      try {
+        const response = await fetch(`/api/memories/${memoryId}`)
+        if (response.ok) {
+          const memoryData = await response.json()
+          setMemory(memoryData)
+        } else {
+          console.error('Erro ao buscar memória:', response.statusText)
         }
-
-        // Se não encontrou na URL, buscar no banco de dados
-        try {
-          const response = await fetch(`/api/memories/${memoryId}`)
-          if (response.ok) {
-            const memoryData = await response.json()
-            setMemory(memoryData)
-            setLoading(false)
-            return
-          }
-        } catch (error) {
-          console.error('Erro ao buscar memória na API:', error)
-        }
-
-        // Fallback: buscar no localStorage
-        try {
-          const savedMemories = localStorage.getItem('memories')
-          if (savedMemories) {
-            const memories: Memory[] = JSON.parse(savedMemories)
-            const foundMemory = memories.find(m => m.id === memoryId)
-            if (foundMemory) {
-              setMemory(foundMemory)
-            }
-          }
-        } catch (error) {
-          console.error('Erro ao acessar localStorage:', error)
-        }
+      } catch (error) {
+        console.error('Erro ao buscar memória:', error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
-    fetchMemory()
+    if (memoryId) {
+      fetchMemory()
+    }
   }, [memoryId])
 
   if (loading) {

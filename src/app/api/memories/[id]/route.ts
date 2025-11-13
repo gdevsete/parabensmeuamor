@@ -7,42 +7,51 @@ export async function GET(
 ) {
   try {
     const memoryId = params.id
-    
+
+    if (!memoryId) {
+      return NextResponse.json({ error: "ID da memória é obrigatório" }, { status: 400 })
+    }
+
+    // Buscar a memória no banco de dados
     const memory = await prisma.memory.findUnique({
-      where: { id: memoryId },
+      where: {
+        id: memoryId,
+      },
       select: {
         id: true,
         title: true,
-        message: true,
+        partnerName: true,
+        description: true,
         photos: true,
         videos: true,
-        music: true,
-        specialDate: true,
+        musicUrl: true,
+        musicName: true,
+        eventDate: true,
+        eventTitle: true,
+        startDate: true,
         createdAt: true,
+        userId: true,
       }
     })
 
     if (!memory) {
-      return NextResponse.json(
-        { error: "Memória não encontrada" },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: "Memória não encontrada" }, { status: 404 })
     }
 
-    // Transformar os dados para o formato esperado
-    const formattedMemory = {
+    // Converter para o formato esperado pela interface
+    const memoryData = {
       id: memory.id,
       title: memory.title,
-      message: memory.message,
-      photos: memory.photos || [],
-      videos: memory.videos || [],
-      music: memory.music || undefined,
-      specialDate: memory.specialDate,
+      message: memory.description || '',
+      photos: memory.photos ? JSON.parse(memory.photos) : [],
+      videos: memory.videos ? JSON.parse(memory.videos) : [],
+      music: memory.musicUrl,
+      specialDate: memory.eventDate?.toISOString() || memory.startDate.toISOString(),
       createdAt: memory.createdAt.toISOString(),
     }
 
-    return NextResponse.json(formattedMemory)
-    
+    return NextResponse.json(memoryData)
+
   } catch (error) {
     console.error("Erro ao buscar memória:", error)
     return NextResponse.json(
